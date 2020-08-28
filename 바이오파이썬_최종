@@ -1,0 +1,208 @@
+import urllib.request
+import gzip
+from collections import OrderedDict
+from datetime import datetime
+
+
+class Genome_Finder(object):
+    
+    def __init__(self):
+        self.target_lines = list()
+        
+        # 추출할 유전자 그룹을 담은 리스트
+        self.chr_class = ['1', '2', '3', '4', 
+                          '5', '6', '7', '8', 
+                          '9', '10', '11', '12', 
+                          '13', '14', '15', '16', 
+                          '17', '18', '19', '20',
+                          '21', '22', 'X', 'Y'] 
+        
+        
+    def read_chrs(self, target_chrs=None, target_lines = [i for i in range(1, 21, 1)]):
+        """
+        인자로 받은 url에서 유전자 서열을 읽어오는 메소드
+        사용자로부터 원하는 번호의 유전자서열을 읽어올 수 있다.
+        
+        
+        매개변수
+        --------
+        target_chrs   :  몇 번 유전자를 읽어올 것인가 (list)
+                         사용자로부터 인자를 입력받지 않으면, 기본적으로 1~22, X, Y를 모두 읽어온다.
+        target_lines  :  몇 번째 라인을 가지고 올지 결정하는 인자. (list)
+                         기본적으로 20줄을 읽어온다.
+        
+        반환값
+        -------
+        타켓 염색체별 염기서열을 담은 딕셔너리 반환(OrderedDict)
+        
+        """
+        self.chrs = OrderedDict()    # 유전자 서열을 담을 OrderedDict, 0번 인덱스 = 1번 유전자.... 23번 인덱스 = Y 유전자
+
+        if target_chrs is None:               # 만약 따로 주어지지 않았다면, 1~22, X, Y 모두 읽어온다.
+            target_chrs = self.chr_class
+        
+        self.target_lines = sorted(target_lines)
+
+        for target in target_chrs:                   # 염색체 번호를 루프를 돈다.  
+            if str(target) not in self.chr_class:         # 사용자가 입력한 염색체 번호가 chr_class에 없으면 
+                print("존재하지 않는 염색체 번호입니다.")    # 사용자에게 알려줌
+                continue         
+
+            sequence = self.__read_chr(target, self.target_lines)
+            self.chrs[str(target)] = sequence
+            
+        return self.chrs
+            
+            
+    def __read_chr(self, target, target_lines):
+        """
+        하나의 유전자 서열을 가지고 오는 메소드
+        하나의 line당 50개의 서열을 가지고 있음
+        
+        
+        매개변수
+        --------
+        target:          몇 번 유전자를 읽어올 것인가
+        target_lines:    해당 유전자 서열 중 몇 번째 라인을 읽어올 것인가
+                         target 유전자 모두 적용되는 범위. 각각에 적용되지 않는다.
+                         또한, 만약 [2, 4, 9]과 같이 주어진다면, 2~9 모두를 가져온다.
+        
+        반환값
+        -------
+        target유전자에서 target_line들 중 가장 작은 번호와 큰 번호 사이의 서열을 문자열 형태로 담은 유전자서열 리스트
+        
+        """
+        
+        def extract_seq(uri):
+            """
+            사용자가 원하는 라인의 염기서열을 추출하는 메소드
+            
+            
+            매개변수
+            ---------
+            URI :     염색체 데이터 (Resource)
+            
+            반환값
+            -------
+            추출한 염기서열 리스트를 반환
+            
+            """
+            
+            sequence = list()
+            count = 0
+            max_range = max(self.target_lines)
+            
+            with gzip.open(urllib.request.urlopen(url), 'r') as f:    # 염색체별로 데이터를 읽어온다.
+            
+                while True:    # N이 없을때까지 찾는다.
+                    
+                    line = f.readline().decode('utf-8').strip().upper()
+
+                    if line[0] != 'N':
+                        if count in self.target_lines:    
+                            sequence.append(line)
+                        count += 1 
+                
+                    if line == '' or count > max_range:
+                        break
+            return sequence
+              
+            
+            
+        url = 'http://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr%s.fa.gz' % target
+        sequence = extract_seq(url)     # 염기서열 타겟라인 추출
+        
+        return sequence
+    
+    
+    def search(self, chrs, target_sequence):
+        """
+        사용자로부터 원하는 유전자 서열 일부를 리스트 받고, 
+        이를 포함하는 유전사 서열의 번호와 해당 부분을 출력하는 메소드 
+        
+        
+        매개변수
+        --------
+        chrs :    대상 유전자 서열
+        target_sequence : 사용자가 찾는 유전자 서열 일부. 리스트 형태. 
+                          [처음 서열, 끝부분 서열]
+        
+        반환값
+        -------
+        resutls :    염색체 번호마다 찾은 염기서열을 번호, 염기서열 정보를 담은 딕셔너리 형태로 반환
+        
+        """
+        results = OrderedDict()
+        
+        for num, sequence in chrs.items():        # num: 염색체 번호, seqeunce: 해당 염색체 염기서열 리스트
+            result = self.__search(sequence, target_sequence)
+            
+            if result is not None:
+                results[num] = result
+        
+        return results
+                
+        
+    def __search(self, sequence, target_sequence):
+        """
+        사용자가 찾고자 하는 염기서열을 찾는 메소드.
+        염색체 '하나'가 대상이다.
+        
+        
+        매개변수
+        -----------
+        sequence:        사용자가 보고자 하는 염기서열 리스트.
+        target_sequence: 사용자가 찾는 염기서열. (list)
+                         앞부분 서열과 뒷부분 서열을 모두 받아야한다.
+                         
+        반환값
+        ---------
+        seq_info : 사용자가 원하는 정보를 찾은 결과를 리스트에 저장하여 반환한다.
+        
+        """ 
+        seq_info = []
+        
+        for line_num, seq in zip(self.target_lines, sequence):
+            
+            start_check, end_check = False, False    
+            start_pattern, end_pattern = target_sequence
+            
+            if start_pattern not in seq:               # 앞부분 서열이 없으면 넘어간다.
+                continue
+            
+            start_check = True
+            start_idx = seq.find(start_pattern)      # 찾는 염기서열의 앞부분
+            
+            
+            if start_check:
+                sub_seq = seq[start_idx + len(start_pattern):]    # 문자열 슬라이싱
+
+                if end_pattern in sub_seq:
+                    
+                    # 찾는 염기서열의 뒷부분. 가장 끝의 인덱스를 가져옴
+                    end_idx = sub_seq.find(end_pattern) + (len(start_pattern) + start_idx)
+
+                    seq_info.append([line_num,                                             # 찾은 염기서열 라인번호
+                                     start_idx + 1, end_idx + len(start_pattern),          # 찾은 결과의 처음, 끝 인덱스
+                                     seq[start_idx:end_idx + len(end_pattern)]])           # 시퀀스 정보
+             
+        return seq_info
+    
+    
+    
+    def save(self, seq_infos):
+        now = datetime.now()
+        
+        with open("seq_info.txt", 'a') as f:
+            save_time = "{}-{}-{} {}:{}:{}\n".format(now.year, now.month, now.day, 
+                                                     now.hour, now.minute, now.second)
+            f.write(save_time)
+            for num_chr, seq_info in seq_infos.items():
+                for info in seq_info:
+                    info_str = "{0:>3} 번 염색체 ----- {1:>2}번째 염기 서열\t 위치 {2:>3} ~{3:>3}\t {4}\n".format(num_chr, 
+                                                                                                         info[0],
+                                                                                                         info[1], info[2],
+                                                                                                         info[3])
+                    f.write(info_str)
+                    
+                f.write('\n')
